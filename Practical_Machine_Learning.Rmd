@@ -1,0 +1,91 @@
+---
+title: "Practical Machine Learning: Course Project"
+date: "4/1/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Problem description
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+## Overview 
+In the present study, the outcome variable (i.e. classe) is a factor with five different levels: class A, class B, ... class E. Two different prediction models based on different machine learning alogorithms (i.e. decision tree and random forests) were tested. Cross validation was carried out by sub-sampling the training data set into two sub-samples (without replacement). It should be noted that the features with missing values and near-zero variance were discarded during the data cleaning process. The two prediction models are fitted on the sub-training data set, and subsequently tested on the sub-testing data set. The prediction model associated with a higher accuracy was selected as the final model, which was then validated on the testing data set. The expected value of the out-of-sample error corresponds to the ratio between the number of misclassified observations and total number of observations in the testing data set. 
+
+
+```{r results='hide', message = FALSE}
+# load several libraries 
+library(caret); library(randomForest); library(rpart); library(rattle); library(RColorBrewer)
+```
+
+## Load data 
+```{r echo=TRUE}
+Train_source <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+Training <- read.csv(url(Train_source), na.strings=c("NA","#DIV/0!",""))
+Test_source <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+Testing <- read.csv(url(Test_source), na.strings=c("NA","#DIV/0!",""))
+
+# Set the overall seed for reproducibility
+set.seed(1234) 
+# Data partitioning: 60% for Training and 40% for Testing
+inTrain <- createDataPartition(y=Training$classe, p=0.6, list=FALSE)
+Training_Set <- Training[inTrain,]; Testing_Set  <- Training[-inTrain,]
+```
+
+## Data cleaning
+```{r echo=FALSE}
+myDataNZV <- nearZeroVar(Training_Set, saveMetrics = TRUE)
+near_zero_var <- names(Training_Set) %in% c("new_window", "kurtosis_roll_belt", "kurtosis_picth_belt","kurtosis_yaw_belt", "skewness_roll_belt", "skewness_roll_belt.1", "skewness_yaw_belt","max_yaw_belt", "min_yaw_belt", "amplitude_yaw_belt", "avg_roll_arm", "stddev_roll_arm","var_roll_arm", "avg_pitch_arm", "stddev_pitch_arm", "var_pitch_arm", "avg_yaw_arm","stddev_yaw_arm", "var_yaw_arm", "kurtosis_roll_arm", "kurtosis_picth_arm", "kurtosis_yaw_arm", "skewness_roll_arm", "skewness_pitch_arm", "skewness_yaw_arm", "max_roll_arm", "min_roll_arm", "min_pitch_arm", "amplitude_roll_arm", "amplitude_pitch_arm", "kurtosis_roll_dumbbell", "kurtosis_picth_dumbbell", "kurtosis_yaw_dumbbell", "skewness_roll_dumbbell","skewness_pitch_dumbbell", "skewness_yaw_dumbbell", "max_yaw_dumbbell", "min_yaw_dumbbell","amplitude_yaw_dumbbell", "kurtosis_roll_forearm", "kurtosis_picth_forearm", "kurtosis_yaw_forearm","skewness_roll_forearm", "skewness_pitch_forearm", "skewness_yaw_forearm", "max_roll_forearm",
+"max_yaw_forearm", "min_roll_forearm", "min_yaw_forearm", "amplitude_roll_forearm",
+"amplitude_yaw_forearm", "avg_roll_forearm", "stddev_roll_forearm", "var_roll_forearm",
+"avg_pitch_forearm", "stddev_pitch_forearm", "var_pitch_forearm", "avg_yaw_forearm",
+"stddev_yaw_forearm", "var_yaw_forearm")
+```
+```{r results='hide'}
+Training_Set <- Training_Set[!near_zero_var]
+dim(Training_Set)
+Training_Set <- Training_Set[c(-1)]
+
+train0 <- Training_Set 
+for(i in 1:length(Training_Set)) {if( sum( is.na( Training_Set[, i] ) )           /nrow(Training_Set) >= .6 ) { for(j in 1:length(train0)) {
+            if( length( grep(names(Training_Set[i]), names(train0)[j]))                 ==1)  {train0 <- train0[,-j]}}}}
+Training_Set <- train0; 
+Testing_Set <- Testing_Set[colnames(Training_Set)]
+Testing <- Testing[colnames(Training_Set[,-58])]
+
+# Coerce the data to the same type
+for (i in 1:length(Testing) ){for(j in 1:length(Training_Set)){
+        if( length( grep(names(Training_Set[i]), names(Testing_Set)[j]))                ==1){class(Testing[j]) <- class(Training_Set[i])}}}
+Testing <- rbind(Training_Set[2, -58] , Testing) 
+Testing <- Testing[-1,]
+```
+## Prediction model 1: decision tree
+ ```{r echo=TRUE}
+ model_1 <- rpart(classe ~ ., data = Training_Set, method = "class")
+ fancyRpartPlot(model_1)
+ Prediction_1 <- predict(model_1, Testing_Set, type = "class")
+ confusionMatrix(Prediction_1, Testing_Set$classe)
+ ```
+
+## Prediction model 2: random forests
+```{r echo=TRUE, message=FALSE}
+model_2 <- randomForest(classe ~ ., data = Training_Set)
+Prediction_2 <- predict(model_2, Testing_Set, type = "class")
+confusionMatrix(Prediction_2, Testing_Set$classe)
+```
+
+## Validation of the prediction model 
+```{r echo=TRUE}
+Prediction_Final <- predict(model_1, Testing, type = "class")
+my_save_data = function(x){
+  n = length(x)
+  for(i in 1:n){filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)}}
+my_save_data(Prediction_Final); Prediction_Final
+```
+
+
